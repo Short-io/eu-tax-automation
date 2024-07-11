@@ -2,12 +2,23 @@
 
 Our company needs to pay taxes in EU and works on automation this process. This is WIP set of scripts to send tax report to [Cyprus Tax Portal](https://tax-oss.mof.gov.cy/vat-return)
 
+### Prerequisites
+
+You need to have: 
+1. zx (https://google.github.io/zx/cli) to run mjs files
+2. miller (https://miller.readthedocs.io/en/6.12.0/) for CSV processing
+3. stripe cli (https://github.com/stripe/stripe-cli)
+
 ### Run
 
 ```
-zx export.mjs
-# TODO - download exported report
-# TODO - populate values in eu.hurl
-# TODO - sign in to VAT tax office
-HURL_report_id=12345 HURL_access_token=<JWT_TOKEN> hurl eu.hurl
+> ./export.mjs
+Now you need to run curl -H 'Authorization: Bearer rk_live_XXXXXXXXXXXXX' https://files.stripe.com/XXXXXXXXXX > output.csv
+> curl -H 'Authorization: Bearer rk_live_XXXXXXXXXXXXX' https://files.stripe.com/XXXXXXXXXX > output.csv
+> REPORT_ID=12345 ACCESS_TOKEN=<JWT_TOKEN> ./process.mjs
+{
+  status: 'SUCCESS',
+  data: null,
+  message: 'Vat Return saved temporary successfuly'
+}
 ```
