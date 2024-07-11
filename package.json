@@ -1,0 +1,15 @@
+{
+  "name": "eu-tax-automation",
+  "version": "1.0.0",
+  "description": "Our company needs to pay taxes in EU and works on automation this process. This is WIP set of scripts to send tax report to [Cyprus Tax Portal](https://tax-oss.mof.gov.cy/vat-return)",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@date-fns/utc": "^1.2.0",
+    "date-fns": "^3.6.0"
+  }
+}
