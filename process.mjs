@@ -293,7 +293,7 @@ const taxJSON = {
       "taxable_amount": resMap["LV"],
       "vat_amount": vatMap["LV"],
     }
-  ],
+  ].filter(el => el.taxable_amount),
   "supplies_from_fixed_establishments": [],
   "vat_corrections": []
 }
