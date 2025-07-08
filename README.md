@@ -18,8 +18,8 @@ STRIPE_KEY=rk_live_XXXXXXXXXXXXX REPORT_ID=12345 ACCESS_TOKEN=<JWT_TOKEN> ./repo
 
 **Required environment variables:**
 - `STRIPE_KEY`: Stripe restricted key with permissions to generate reports and download files
-- `REPORT_ID`: Your tax report ID
-- `ACCESS_TOKEN`: JWT token for Cyprus Tax Portal authentication
+- `REPORT_ID`: Your tax report ID. You can get in from the URL: https://tax-oss.mof.gov.cy/vat-return/view/12345
+- `ACCESS_TOKEN`: JWT token for Cyprus Tax Portal authentication. You need to use browser developer tools to extract x-access-token header from any authorized request
 
 Expected output:
 ```
