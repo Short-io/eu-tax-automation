@@ -1,4 +1,27 @@
 #!/usr/bin/env zx
+
+// Check for required environment variables
+const requiredEnvVars = ['RETURN_ID', 'ACCESS_TOKEN'];
+const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingEnvVars.length > 0) {
+  console.error(`Error: Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  console.error('Please set the following environment variables:');
+  missingEnvVars.forEach(varName => {
+    console.error(`  ${varName}=<your_value>`);
+  });
+  process.exit(1);
+}
+
+// Check if output.csv file exists
+try {
+  await $`test -f output.csv`;
+} catch (error) {
+  console.error('Error: output.csv file not found');
+  console.error('Please ensure the output.csv file exists in the current directory');
+  process.exit(1);
+}
+
 const res = JSON.parse(await $`mlr --icsv --ojson cut -f country_code,filing_currency,filing_total_taxable_sales,filing_tax_payable then filter '$filing_total_taxable_sales>0' then stats1 -f filing_total_taxable_sales,filing_tax_payable -g country_code -a sum output.csv`)
 const resMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_total_taxable_sales_sum]))
 const vatMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_tax_payable_sum]))
