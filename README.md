@@ -5,17 +5,24 @@ Our company needs to pay taxes in EU and works on automation this process. This 
 ### Prerequisites
 
 You need to have: 
-1. zx (https://google.github.io/zx/cli) to run mjs files
+1. Node.js and zx (https://google.github.io/zx/cli) to run mjs files
 2. miller (https://miller.readthedocs.io/en/6.12.0/) for CSV processing
-3. stripe cli (https://github.com/stripe/stripe-cli)
 
 ### Run
 
+Set the required environment variables and run:
+
 ```
-> ./export.mjs
-Now you need to run curl -H 'Authorization: Bearer rk_live_XXXXXXXXXXXXX' https://files.stripe.com/XXXXXXXXXX > output.csv
-> curl -H 'Authorization: Bearer rk_live_XXXXXXXXXXXXX' https://files.stripe.com/XXXXXXXXXX > output.csv
-> REPORT_ID=12345 ACCESS_TOKEN=<JWT_TOKEN> ./process.mjs
+STRIPE_KEY=rk_live_XXXXXXXXXXXXX REPORT_ID=12345 ACCESS_TOKEN=<JWT_TOKEN> ./report.mjs
+```
+
+**Required environment variables:**
+- `STRIPE_KEY`: Stripe restricted key with permissions to generate reports and download files
+- `REPORT_ID`: Your tax report ID
+- `ACCESS_TOKEN`: JWT token for Cyprus Tax Portal authentication
+
+Expected output:
+```
 {
   status: 'SUCCESS',
   data: null,
