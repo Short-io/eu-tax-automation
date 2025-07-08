@@ -1,4 +1,7 @@
-#!/usr/bin/env zx
+#!/usr/bin/env node
+
+import { spawn } from 'child_process';
+import fs from 'fs';
 
 // Check for required environment variables
 const requiredEnvVars = ['RETURN_ID', 'ACCESS_TOKEN'];
@@ -14,15 +17,61 @@ if (missingEnvVars.length > 0) {
 }
 
 // Check if output.csv file exists
-try {
-  await $`test -f output.csv`;
-} catch (error) {
+if (!fs.existsSync('output.csv')) {
   console.error('Error: output.csv file not found');
   console.error('Please ensure the output.csv file exists in the current directory');
   process.exit(1);
 }
 
-const res = JSON.parse(await $`mlr --icsv --ojson cut -f country_code,filing_currency,filing_total_taxable_sales,filing_tax_payable then filter '$filing_total_taxable_sales>0' then stats1 -f filing_total_taxable_sales,filing_tax_payable -g country_code -a sum output.csv`)
+const execCommand = (command, args) => {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { stdio: 'pipe' });
+    let stdout = '';
+    let stderr = '';
+    
+    child.stdout.on('data', (data) => {
+      stdout += data;
+    });
+    
+    child.stderr.on('data', (data) => {
+      stderr += data;
+    });
+    
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(`Command failed with exit code ${code}: ${stderr}`));
+      }
+    });
+    
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+};
+
+const mlrOutput = await execCommand('mlr', [
+  '--icsv',
+  '--ojson',
+  'cut',
+  '-f',
+  'country_code,filing_currency,filing_total_taxable_sales,filing_tax_payable',
+  'then',
+  'filter',
+  '$filing_total_taxable_sales>0',
+  'then',
+  'stats1',
+  '-f',
+  'filing_total_taxable_sales,filing_tax_payable',
+  '-g',
+  'country_code',
+  '-a',
+  'sum',
+  'output.csv'
+]);
+
+const res = JSON.parse(mlrOutput);
 const resMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_total_taxable_sales_sum]))
 const vatMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_tax_payable_sum]))
 const taxJSON = {

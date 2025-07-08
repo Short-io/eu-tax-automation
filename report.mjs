@@ -26,9 +26,9 @@ async function main() {
     // Call exportReport function from export.mjs
     await exportReport();
     
-    // Then run process.mjs using zx
+    // Then run process.mjs using node
     console.log('Running process.mjs...');
-    await execCommand('zx', ['process.mjs']);
+    await execCommand('node', ['process.mjs']);
     
     console.log('All processes completed successfully!');
   } catch (error) {
