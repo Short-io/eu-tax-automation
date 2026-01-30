@@ -63,7 +63,7 @@ const mlrOutput = await execCommand('mlr', [
   'then',
   'stats1',
   '-f',
-  'filing_total_taxable_sales,filing_tax_payable',
+  'filing_total_taxable_sales,filing_tax_payable,filing_total_sales_refunded',
   '-g',
   'country_code',
   '-a',
@@ -72,7 +72,7 @@ const mlrOutput = await execCommand('mlr', [
 ]);
 
 const res = JSON.parse(mlrOutput);
-const resMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_total_taxable_sales_sum]))
+const resMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_total_taxable_sales_sum - el.filing_total_sales_refunded]))
 const vatMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_tax_payable_sum]))
 const taxJSON = {
   "supplies_from_member_state_of_identification": [
