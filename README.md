@@ -4,9 +4,8 @@ Our company needs to pay taxes in EU and works on automation this process. This 
 
 ### Prerequisites
 
-You need to have: 
+You need to have:
 1. Node.js to run mjs files
-2. miller (https://miller.readthedocs.io/en/6.12.0/) for CSV processing
 
 ### Run
 

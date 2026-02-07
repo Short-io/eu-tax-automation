@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { spawn } from 'child_process';
 import fs from 'fs';
+import { parse } from 'csv-parse/sync';
 
 const SUPPORTED_REGIONS = ['EU', 'AU', 'CA', 'UK'];
 const regions = process.argv.slice(2).map(r => r.toUpperCase());
@@ -25,55 +25,27 @@ if (!fs.existsSync('output.csv')) {
   process.exit(1);
 }
 
-const execCommand = (command, args) => {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: 'pipe' });
-    let stdout = '';
-    let stderr = '';
+const records = parse(fs.readFileSync('output.csv'), { columns: true, cast: true });
 
-    child.stdout.on('data', (data) => {
-      stdout += data;
-    });
+const groups = {};
+for (const row of records) {
+  if (row.filing_total_taxable_sales <= 0) continue;
+  const key = `${row.country_code}\0${row.state_code}`;
+  if (!groups[key]) {
+    groups[key] = {
+      country_code: row.country_code,
+      state_code: row.state_code,
+      filing_total_taxable_sales_sum: 0,
+      filing_tax_payable_sum: 0,
+      filing_total_sales_refunded_sum: 0,
+    };
+  }
+  groups[key].filing_total_taxable_sales_sum += row.filing_total_taxable_sales;
+  groups[key].filing_tax_payable_sum += row.filing_tax_payable;
+  groups[key].filing_total_sales_refunded_sum += row.filing_total_sales_refunded || 0;
+}
 
-    child.stderr.on('data', (data) => {
-      stderr += data;
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(`Command failed with exit code ${code}: ${stderr}`));
-      }
-    });
-
-    child.on('error', (error) => {
-      reject(error);
-    });
-  });
-};
-
-const mlrOutput = await execCommand('mlr', [
-  '--icsv',
-  '--ojson',
-  'cut',
-  '-f',
-  'country_code,state_code,filing_total_taxable_sales,filing_tax_payable,filing_total_sales_refunded',
-  'then',
-  'filter',
-  '$filing_total_taxable_sales>0',
-  'then',
-  'stats1',
-  '-f',
-  'filing_total_taxable_sales,filing_tax_payable,filing_total_sales_refunded',
-  '-g',
-  'country_code,state_code',
-  '-a',
-  'sum',
-  'output.csv'
-]);
-
-const res = JSON.parse(mlrOutput);
+const res = Object.values(groups);
 
 const round2 = (n) => Math.round(n * 100) / 100;
 const netTaxable = (el) => round2(el.filing_total_taxable_sales_sum + (el.filing_total_sales_refunded_sum || 0));
