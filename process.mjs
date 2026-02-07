@@ -3,16 +3,18 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 
-// Check for required environment variables
-const requiredEnvVars = ['RETURN_ID', 'ACCESS_TOKEN'];
-const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+const SUPPORTED_REGIONS = ['EU', 'AU', 'CA', 'UK'];
+const regions = process.argv.slice(2).map(r => r.toUpperCase());
 
-if (missingEnvVars.length > 0) {
-  console.error(`Error: Missing required environment variables: ${missingEnvVars.join(', ')}`);
-  console.error('Please set the following environment variables:');
-  missingEnvVars.forEach(varName => {
-    console.error(`  ${varName}=<your_value>`);
-  });
+if (regions.length === 0 || regions.some(r => !SUPPORTED_REGIONS.includes(r))) {
+  console.error(`Usage: node process.mjs <region> [region...]`);
+  console.error(`Supported regions: ${SUPPORTED_REGIONS.join(', ')}`);
+  process.exit(1);
+}
+
+// EU portal upload requires these env vars
+if (regions.includes('EU') && (!process.env.RETURN_ID || !process.env.ACCESS_TOKEN)) {
+  console.error('Error: RETURN_ID and ACCESS_TOKEN environment variables are required for EU report');
   process.exit(1);
 }
 
@@ -28,15 +30,15 @@ const execCommand = (command, args) => {
     const child = spawn(command, args, { stdio: 'pipe' });
     let stdout = '';
     let stderr = '';
-    
+
     child.stdout.on('data', (data) => {
       stdout += data;
     });
-    
+
     child.stderr.on('data', (data) => {
       stderr += data;
     });
-    
+
     child.on('close', (code) => {
       if (code === 0) {
         resolve(stdout);
@@ -44,7 +46,7 @@ const execCommand = (command, args) => {
         reject(new Error(`Command failed with exit code ${code}: ${stderr}`));
       }
     });
-    
+
     child.on('error', (error) => {
       reject(error);
     });
@@ -56,7 +58,7 @@ const mlrOutput = await execCommand('mlr', [
   '--ojson',
   'cut',
   '-f',
-  'country_code,filing_currency,filing_total_taxable_sales,filing_tax_payable',
+  'country_code,state_code,filing_total_taxable_sales,filing_tax_payable,filing_total_sales_refunded',
   'then',
   'filter',
   '$filing_total_taxable_sales>0',
@@ -65,328 +67,153 @@ const mlrOutput = await execCommand('mlr', [
   '-f',
   'filing_total_taxable_sales,filing_tax_payable,filing_total_sales_refunded',
   '-g',
-  'country_code',
+  'country_code,state_code',
   '-a',
   'sum',
   'output.csv'
 ]);
 
 const res = JSON.parse(mlrOutput);
-const resMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_total_taxable_sales_sum - el.filing_total_sales_refunded]))
-const vatMap = Object.fromEntries(res.map(el => [el.country_code, el.filing_tax_payable_sum]))
-const taxJSON = {
-  "supplies_from_member_state_of_identification": [
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 17,
-      "consumer": "Austria",
-      "vat_rate_id": 190,
-      "vat_rate": 20,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["AT"],
-      "vat_amount": vatMap["AT"],
-      "vat_code": "STANDARD"
+
+const round2 = (n) => Math.round(n * 100) / 100;
+const netTaxable = (el) => round2(el.filing_total_taxable_sales_sum + (el.filing_total_sales_refunded_sum || 0));
+
+// ---- EU Report ----
+
+if (regions.includes('EU')) {
+  const EU_COUNTRIES = [
+    { code: 'AT', name: 'Austria', consumer_id: 17, vat_rate_id: 190, vat_rate: 20 },
+    { code: 'BE', name: 'Belgium', consumer_id: 24, vat_rate_id: 191, vat_rate: 21 },
+    { code: 'BG', name: 'Bulgaria', consumer_id: 37, vat_rate_id: 192, vat_rate: 20 },
+    { code: 'HR', name: 'Croatia', consumer_id: 60, vat_rate_id: 187, vat_rate: 25 },
+    { code: 'CY', name: 'Cyprus', consumer_id: 62, vat_rate_id: 271, vat_rate: 19 },
+    { code: 'CZ', name: 'Czech Republic', consumer_id: 63, vat_rate_id: 193, vat_rate: 21 },
+    { code: 'DK', name: 'Denmark', consumer_id: 64, vat_rate_id: 195, vat_rate: 25 },
+    { code: 'EE', name: 'Estonia', consumer_id: 73, vat_rate_id: 299, vat_rate: 22 },
+    { code: 'FI', name: 'Finland', consumer_id: 78, vat_rate_id: 197, vat_rate: 24 },
+    { code: 'FR', name: 'France', consumer_id: 79, vat_rate_id: 220, vat_rate: 20 },
+    { code: 'DE', name: 'Germany', consumer_id: 86, vat_rate_id: 199, vat_rate: 19 },
+    { code: 'GR', name: 'Greece', consumer_id: 89, vat_rate_id: 225, vat_rate: 24 },
+    { code: 'HU', name: 'Hungary', consumer_id: 103, vat_rate_id: 201, vat_rate: 27 },
+    { code: 'IE', name: 'Ireland', consumer_id: 109, vat_rate_id: 202, vat_rate: 23 },
+    { code: 'IT', name: 'Italy', consumer_id: 112, vat_rate_id: 203, vat_rate: 22 },
+    { code: 'LT', name: 'Lithuania', consumer_id: 131, vat_rate_id: 205, vat_rate: 21 },
+    { code: 'MT', name: 'Malta', consumer_id: 139, vat_rate_id: 207, vat_rate: 18 },
+    { code: 'NL', name: 'Netherlands', consumer_id: 158, vat_rate_id: 208, vat_rate: 21 },
+    { code: 'PL', name: 'Poland', consumer_id: 179, vat_rate_id: 254, vat_rate: 23 },
+    { code: 'PT', name: 'Portugal', consumer_id: 180, vat_rate_id: 210, vat_rate: 23 },
+    { code: 'RO', name: 'Romania', consumer_id: 184, vat_rate_id: 211, vat_rate: 19 },
+    { code: 'ES', name: 'Spain', consumer_id: 209, vat_rate_id: 214, vat_rate: 21 },
+    { code: 'SE', name: 'Sweden', consumer_id: 215, vat_rate_id: 215, vat_rate: 25 },
+    { code: 'LV', name: 'Latvia', consumer_id: 125, vat_rate_id: 204, vat_rate: 21 },
+  ];
+
+  const euCodes = new Set(EU_COUNTRIES.map(c => c.code));
+  const euData = res.filter(el => euCodes.has(el.country_code));
+  const resMap = Object.fromEntries(euData.map(el => [el.country_code, netTaxable(el)]));
+  const vatMap = Object.fromEntries(euData.map(el => [el.country_code, el.filing_tax_payable_sum]));
+
+  const taxJSON = {
+    supplies_from_member_state_of_identification: EU_COUNTRIES
+      .map(country => ({
+        vat_return_supply_id: 0,
+        supply_type: "SERVICES",
+        supply_type_id: 2,
+        consumer_id: country.consumer_id,
+        consumer: country.name,
+        vat_rate_id: country.vat_rate_id,
+        vat_rate: country.vat_rate,
+        vat_rate_type: "Standard VAT Rate",
+        taxable_amount: resMap[country.code],
+        vat_amount: vatMap[country.code],
+        vat_code: "STANDARD"
+      }))
+      .filter(el => el.taxable_amount),
+    supplies_from_fixed_establishments: [],
+    vat_corrections: []
+  };
+
+  fs.writeFileSync('eu-tax-report.json', JSON.stringify(taxJSON, null, 2));
+  console.log('EU tax report saved to eu-tax-report.json');
+
+  const uploadRes = await fetch(`https://tax-oss.mof.gov.cy/api/vatreturn/${process.env.RETURN_ID}/save/temporary`, {
+    method: 'PUT',
+    headers: {
+      'Accept': 'application/json, text/plain, */*',
+      'Connection': 'keep-alive',
+      'Referer': `https://tax-oss.mof.gov.cy/vat-return/edit/${process.env.RETURN_ID}`,
+      'Content-Type': 'application/json',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+      'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"macOS"',
+      'x-access-token': process.env.ACCESS_TOKEN
     },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 24,
-      "consumer": "Belgium",
-      "vat_rate_id": 191,
-      "vat_rate": 21,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["BE"],
-      "vat_amount": vatMap["BE"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 37,
-      "consumer": "Bulgaria",
-      "vat_rate_id": 192,
-      "vat_rate": 20,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["BG"],
-      "vat_amount": vatMap["BG"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 60,
-      "consumer": "Croatia",
-      "vat_rate_id": 187,
-      "vat_rate": 25,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["HR"],
-      "vat_amount": vatMap["HR"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 62,
-      "consumer": "Cyprus",
-      "vat_rate_id": 271,
-      "vat_rate": 19,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["CY"],
-      "vat_amount": vatMap["CY"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 63,
-      "consumer": "Czech Republic",
-      "vat_rate_id": 193,
-      "vat_rate": 21,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["CZ"],
-      "vat_amount": vatMap["CZ"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 64,
-      "consumer": "Denmark",
-      "vat_rate_id": 195,
-      "vat_rate": 25,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["DK"],
-      "vat_amount": vatMap["DK"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 73,
-      "consumer": "Estonia",
-      "vat_rate_id": 299,
-      "vat_rate": 22,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["EE"],
-      "vat_amount": vatMap["EE"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 78,
-      "consumer": "Finland",
-      "vat_rate_id": 197,
-      "vat_rate": 24,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["FI"],
-      "vat_amount": vatMap["FI"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 79,
-      "consumer": "France",
-      "vat_rate_id": 220,
-      "vat_rate": 20,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["FR"],
-      "vat_amount": vatMap["FR"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 86,
-      "consumer": "Germany",
-      "vat_rate_id": 199,
-      "vat_rate": 19,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["DE"],
-      "vat_amount": vatMap["DE"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 89,
-      "consumer": "Greece",
-      "vat_rate_id": 225,
-      "vat_rate": 24,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["GR"],
-      "vat_amount": vatMap["GR"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 103,
-      "consumer": "Hungary",
-      "vat_rate_id": 201,
-      "vat_rate": 27,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["HU"],
-      "vat_amount": vatMap["HU"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 109,
-      "consumer": "Ireland",
-      "vat_rate_id": 202,
-      "vat_rate": 23,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["IE"],
-      "vat_amount": vatMap["IE"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 112,
-      "consumer": "Italy",
-      "vat_rate_id": 203,
-      "vat_rate": 22,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["IT"],
-      "vat_amount": vatMap["IT"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 131,
-      "consumer": "Lithuania",
-      "vat_rate_id": 205,
-      "vat_rate": 21,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["LT"],
-      "vat_amount": vatMap["LT"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 139,
-      "consumer": "Malta",
-      "vat_rate_id": 207,
-      "vat_rate": 18,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["MT"],
-      "vat_amount": vatMap["MT"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 158,
-      "consumer": "Netherlands",
-      "vat_rate_id": 208,
-      "vat_rate": 21,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["NL"],
-      "vat_amount": vatMap["NL"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 179,
-      "consumer": "Poland",
-      "vat_rate_id": 254,
-      "vat_rate": 23,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["PL"],
-      "vat_amount": vatMap["PL"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 180,
-      "consumer": "Portugal",
-      "vat_rate_id": 210,
-      "vat_rate": 23,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["PT"],
-      "vat_amount": vatMap["PT"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 184,
-      "consumer": "Romania",
-      "vat_rate_id": 211,
-      "vat_rate": 19,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["RO"],
-      "vat_amount": vatMap["RO"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 209,
-      "consumer": "Spain",
-      "vat_rate_id": 214,
-      "vat_rate": 21,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["ES"],
-      "vat_amount": vatMap["ES"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 215,
-      "consumer": "Sweden",
-      "vat_rate_id": 215,
-      "vat_rate": 25,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["SE"],
-      "vat_amount": vatMap["SE"],
-    },
-    {
-      "vat_return_supply_id": 0,
-      "supply_type": "SERVICES",
-      "supply_type_id": 2,
-      "consumer_id": 125,
-      "consumer": "Latvia",
-      "vat_rate_id": 204,
-      "vat_rate": 21,
-      "vat_rate_type": "Standard VAT Rate",
-      "taxable_amount": resMap["LV"],
-      "vat_amount": vatMap["LV"],
-    }
-  ].filter(el => el.taxable_amount),
-  "supplies_from_fixed_establishments": [],
-  "vat_corrections": []
+    body: JSON.stringify(taxJSON),
+  });
+  console.log('EU portal upload response:', await uploadRes.json());
 }
 
-const uploadRes = await fetch(`https://tax-oss.mof.gov.cy/api/vatreturn/${process.env.RETURN_ID}/save/temporary`, {
-	method: 'PUT',
-	headers: {
-		'Accept': 'application/json, text/plain, */*',
-		'Connection': 'keep-alive',
-		'Referer': `https://tax-oss.mof.gov.cy/vat-return/edit/${process.env.RETURN_ID}`,
-		'Content-Type': 'application/json',
-		'Sec-Fetch-Dest': 'empty',
-		'Sec-Fetch-Mode': 'cors',
-		'Sec-Fetch-Site': 'same-origin',
-		'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-		'sec-ch-ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
-		'sec-ch-ua-mobile': '?0',
-		'sec-ch-ua-platform': '"macOS"',
-		'x-access-token': process.env.ACCESS_TOKEN
-	},
-	body: JSON.stringify(taxJSON),
-});
+// ---- AU Report (country-level GST) ----
 
-console.log(await uploadRes.json());
+if (regions.includes('AU')) {
+  const auData = res.filter(el => el.country_code === 'AU');
+  if (auData.length > 0) {
+    const auReport = {
+      region: 'AU',
+      currency: 'AUD',
+      total_taxable_amount: round2(auData.reduce((sum, el) => sum + netTaxable(el), 0)),
+      total_tax_payable: round2(auData.reduce((sum, el) => sum + el.filing_tax_payable_sum, 0)),
+    };
+    fs.writeFileSync('au-tax-report.json', JSON.stringify(auReport, null, 2));
+    console.log('AU tax report saved to au-tax-report.json');
+  } else {
+    console.log('No AU tax data found in report');
+  }
+}
+
+// ---- CA Report (provincial breakdown) ----
+
+if (regions.includes('CA')) {
+  const caData = res.filter(el => el.country_code === 'CA');
+  if (caData.length > 0) {
+    const caReport = {
+      region: 'CA',
+      currency: 'CAD',
+      provinces: caData
+        .map(el => ({
+          province: el.state_code,
+          taxable_amount: netTaxable(el),
+          tax_payable: round2(el.filing_tax_payable_sum),
+        }))
+        .filter(el => el.taxable_amount),
+      total_taxable_amount: round2(caData.reduce((sum, el) => sum + netTaxable(el), 0)),
+      total_tax_payable: round2(caData.reduce((sum, el) => sum + el.filing_tax_payable_sum, 0)),
+    };
+    fs.writeFileSync('ca-tax-report.json', JSON.stringify(caReport, null, 2));
+    console.log('CA tax report saved to ca-tax-report.json');
+  } else {
+    console.log('No CA tax data found in report');
+  }
+}
+
+// ---- UK Report (country-level VAT) ----
+
+if (regions.includes('UK')) {
+  const gbData = res.filter(el => el.country_code === 'GB');
+  if (gbData.length > 0) {
+    const gbReport = {
+      region: 'GB',
+      currency: 'GBP',
+      total_taxable_amount: round2(gbData.reduce((sum, el) => sum + netTaxable(el), 0)),
+      total_tax_payable: round2(gbData.reduce((sum, el) => sum + el.filing_tax_payable_sum, 0)),
+    };
+    fs.writeFileSync('uk-tax-report.json', JSON.stringify(gbReport, null, 2));
+    console.log('UK tax report saved to uk-tax-report.json');
+  } else {
+    console.log('No UK tax data found in report');
+  }
+}
