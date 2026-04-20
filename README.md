@@ -51,7 +51,16 @@ You can pass any combination of regions: `EU`, `AU`, `CA`, `UK`.
 |----------|-------------|-------------|
 | `STRIPE_SECRET_KEY` | All regions (export step) | Stripe restricted key with report generation and file download permissions |
 | `RETURN_ID` | EU only | VAT return ID from the Cyprus Tax Portal URL (`https://tax-oss.mof.gov.cy/vat-return/view/<ID>`) |
-| `ACCESS_TOKEN` | EU only | JWT token for Cyprus Tax Portal authentication (extract `x-access-token` header from browser dev tools) |
+| `ACCESS_TOKEN` | EU only | JWT token for Cyprus Tax Portal authentication (see below) |
+
+#### Getting the Cyprus Tax Portal access token
+
+1. Log in to [tax-oss.mof.gov.cy](https://tax-oss.mof.gov.cy)
+2. Open browser dev tools (F12) → Console
+3. Run:
+   ```js
+   JSON.parse(JSON.parse(localStorage.getItem('persist:AuthReducer')).token)
+   ```
 
 ### EU countries covered
 

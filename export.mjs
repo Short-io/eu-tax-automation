@@ -1,12 +1,19 @@
 import { UTCDate } from "@date-fns/utc";
-import { endOfQuarter, startOfQuarter, subMonths, getUnixTime } from 'date-fns';
+import { addMonths, endOfQuarter, startOfQuarter, subMonths, getUnixTime } from 'date-fns';
 import { writeFileSync } from 'fs';
 import Stripe from 'stripe';
 
-export async function exportReport() {
-	const sq = startOfQuarter(subMonths(new UTCDate(), 3))
-	const eq = endOfQuarter(subMonths(new UTCDate(), 3))
+export async function exportReport({ year, quarter, monthShift = 0 } = {}) {
+	let sq, eq;
+	if (year !== undefined && quarter !== undefined) {
+		sq = new UTCDate(year, (quarter - 1) * 3, 1);
+		eq = addMonths(endOfQuarter(sq), monthShift);
+	} else {
+		sq = startOfQuarter(subMonths(new UTCDate(), 3));
+		eq = addMonths(endOfQuarter(subMonths(new UTCDate(), 3)), monthShift);
+	}
 
+	console.log(`Report period: ${sq.toISOString().slice(0, 10)} to ${eq.toISOString().slice(0, 10)}`);
 	console.log('Creating tax report...');
 	const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 	if (!stripeSecretKey) {
