@@ -20,7 +20,7 @@ Stripe API → output.csv → {eu,au,ca,uk}-tax-report.json
 
 | Region | Output file | Tax type | Breakdown |
 |--------|------------|----------|-----------|
-| EU | `eu-tax-report.json` | VAT (MOSS) | Per-country (24 EU member states) |
+| EU | `eu-tax-report.json` | VAT (MOSS) | Per-country (27 EU member states) |
 | AU | `au-tax-report.json` | GST | Country-level |
 | CA | `ca-tax-report.json` | GST/HST/PST | Per-province |
 | UK | `uk-tax-report.json` | VAT | Country-level |
@@ -64,7 +64,7 @@ You can pass any combination of regions: `EU`, `AU`, `CA`, `UK`.
 
 ### EU countries covered
 
-AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LT, LV, MT, NL, PL, PT, RO, ES, SE
+AT, BE, BG, HR, CY, CZ, DK, EE, FI, FR, DE, GR, HU, IE, IT, LT, LU, LV, MT, NL, PL, PT, RO, SK, SI, ES, SE
 
 ### Dependencies
 
