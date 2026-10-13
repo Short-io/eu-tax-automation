@@ -1,16 +1,17 @@
 import { UTCDate } from "@date-fns/utc";
-import { addMonths, endOfQuarter, startOfQuarter, subMonths, getUnixTime } from 'date-fns';
+import { addMonths, endOfMonth, endOfQuarter, startOfQuarter, subMonths, getUnixTime } from 'date-fns';
 import { writeFileSync } from 'fs';
 import Stripe from 'stripe';
 
 export async function exportReport({ year, quarter, monthShift = 0 } = {}) {
 	let sq, eq;
 	if (year !== undefined && quarter !== undefined) {
-		sq = new UTCDate(year, (quarter - 1) * 3, 1);
-		eq = addMonths(endOfQuarter(sq), monthShift);
+		sq = addMonths(new UTCDate(year, (quarter - 1) * 3, 1), monthShift);
+		eq = endOfMonth(addMonths(endOfQuarter(new UTCDate(year, (quarter - 1) * 3, 1)), monthShift));
 	} else {
-		sq = startOfQuarter(subMonths(new UTCDate(), 3));
-		eq = addMonths(endOfQuarter(subMonths(new UTCDate(), 3)), monthShift);
+		const refDate = subMonths(new UTCDate(), 3);
+		sq = addMonths(startOfQuarter(refDate), monthShift);
+		eq = endOfMonth(addMonths(endOfQuarter(refDate), monthShift));
 	}
 
 	console.log(`Report period: ${sq.toISOString().slice(0, 10)} to ${eq.toISOString().slice(0, 10)}`);

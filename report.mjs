@@ -88,7 +88,7 @@ async function main() {
 
     // Then run process.mjs with the selected regions
     console.log(`Running process.mjs for regions: ${regions.join(', ')}...`);
-    await execCommand('node', ['process.mjs', ...regions]);
+    await execCommand('node', ['--use-system-ca', 'process.mjs', ...regions]);
 
     console.log('All processes completed successfully!');
   } catch (error) {
