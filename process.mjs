@@ -38,11 +38,13 @@ for (const row of records) {
       filing_total_taxable_sales_sum: 0,
       filing_tax_payable_sum: 0,
       filing_total_sales_refunded_sum: 0,
+      row_count: 0,
     };
   }
   groups[key].filing_total_taxable_sales_sum += row.filing_total_taxable_sales;
   groups[key].filing_tax_payable_sum += row.filing_tax_payable;
   groups[key].filing_total_sales_refunded_sum += row.filing_total_sales_refunded || 0;
+  groups[key].row_count += 1;
 }
 
 const res = Object.values(groups);
@@ -61,8 +63,8 @@ if (regions.includes('EU')) {
     { code: 'CY', name: 'Cyprus', consumer_id: 62, vat_rate_id: 271, vat_rate: 19 },
     { code: 'CZ', name: 'Czech Republic', consumer_id: 63, vat_rate_id: 193, vat_rate: 21 },
     { code: 'DK', name: 'Denmark', consumer_id: 64, vat_rate_id: 195, vat_rate: 25 },
-    { code: 'EE', name: 'Estonia', consumer_id: 73, vat_rate_id: 299, vat_rate: 22 },
-    { code: 'FI', name: 'Finland', consumer_id: 78, vat_rate_id: 197, vat_rate: 24 },
+    { code: 'EE', name: 'Estonia', consumer_id: 73, vat_rate_id: 340, vat_rate: 24 },
+    { code: 'FI', name: 'Finland', consumer_id: 78, vat_rate_id: 326, vat_rate: 25.5 },
     { code: 'FR', name: 'France', consumer_id: 79, vat_rate_id: 220, vat_rate: 20 },
     { code: 'DE', name: 'Germany', consumer_id: 86, vat_rate_id: 199, vat_rate: 19 },
     { code: 'GR', name: 'Greece', consumer_id: 89, vat_rate_id: 225, vat_rate: 24 },
@@ -74,16 +76,20 @@ if (regions.includes('EU')) {
     { code: 'NL', name: 'Netherlands', consumer_id: 158, vat_rate_id: 208, vat_rate: 21 },
     { code: 'PL', name: 'Poland', consumer_id: 179, vat_rate_id: 254, vat_rate: 23 },
     { code: 'PT', name: 'Portugal', consumer_id: 180, vat_rate_id: 210, vat_rate: 23 },
-    { code: 'RO', name: 'Romania', consumer_id: 184, vat_rate_id: 211, vat_rate: 19 },
+    { code: 'RO', name: 'Romania', consumer_id: 184, vat_rate_id: 341, vat_rate: 21 },
     { code: 'ES', name: 'Spain', consumer_id: 209, vat_rate_id: 214, vat_rate: 21 },
     { code: 'SE', name: 'Sweden', consumer_id: 215, vat_rate_id: 215, vat_rate: 25 },
     { code: 'LV', name: 'Latvia', consumer_id: 125, vat_rate_id: 204, vat_rate: 21 },
+    { code: 'LU', name: 'Luxembourg', consumer_id: 132, vat_rate_id: 303, vat_rate: 17 },
+    { code: 'SK', name: 'Slovakia', consumer_id: 203, vat_rate_id: 329, vat_rate: 23 },
+    { code: 'SI', name: 'Slovenia', consumer_id: 204, vat_rate_id: 213, vat_rate: 22 },
   ];
 
   const euCodes = new Set(EU_COUNTRIES.map(c => c.code));
   const euData = res.filter(el => euCodes.has(el.country_code));
   const resMap = Object.fromEntries(euData.map(el => [el.country_code, netTaxable(el)]));
   const vatMap = Object.fromEntries(euData.map(el => [el.country_code, el.filing_tax_payable_sum]));
+  const rowCountMap = Object.fromEntries(euData.map(el => [el.country_code, el.row_count]));
 
   const taxJSON = {
     supplies_from_member_state_of_identification: EU_COUNTRIES
@@ -107,6 +113,27 @@ if (regions.includes('EU')) {
 
   fs.writeFileSync('eu-tax-report.json', JSON.stringify(taxJSON, null, 2));
   console.log('EU tax report saved to eu-tax-report.json');
+
+  // Math check: reported VAT must equal taxable amount * VAT rate.
+  // Stripe rounds tax per transaction, so allow up to half a cent of drift per transaction.
+  const codeByConsumer = Object.fromEntries(EU_COUNTRIES.map(c => [c.consumer_id, c.code]));
+  const mismatches = taxJSON.supplies_from_member_state_of_identification
+    .map(supply => {
+      const code = codeByConsumer[supply.consumer_id];
+      const expected = round2(supply.taxable_amount * supply.vat_rate / 100);
+      const diff = round2(supply.vat_amount - expected);
+      const tolerance = 0.01 + 0.005 * rowCountMap[code];
+      return { country: code, taxable: supply.taxable_amount, rate: supply.vat_rate, reported_vat: round2(supply.vat_amount), expected_vat: expected, diff, tolerance: round2(tolerance) };
+    })
+    .filter(el => Math.abs(el.diff) > el.tolerance);
+
+  if (mismatches.length > 0) {
+    console.error('EU math check FAILED: reported VAT does not match taxable amount * VAT rate');
+    console.table(mismatches);
+    console.error('Not uploading to the EU portal. Check VAT rates in EU_COUNTRIES and the Stripe data.');
+    process.exit(1);
+  }
+  console.log('EU math check passed: reported VAT matches taxable amount * VAT rate for all countries');
 
   const uploadRes = await fetch(`https://tax-oss.mof.gov.cy/api/vatreturn/${process.env.RETURN_ID}/save/temporary`, {
     method: 'PUT',
