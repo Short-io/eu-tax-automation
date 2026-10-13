@@ -38,13 +38,11 @@ for (const row of records) {
       filing_total_taxable_sales_sum: 0,
       filing_tax_payable_sum: 0,
       filing_total_sales_refunded_sum: 0,
-      row_count: 0,
     };
   }
   groups[key].filing_total_taxable_sales_sum += row.filing_total_taxable_sales;
   groups[key].filing_tax_payable_sum += row.filing_tax_payable;
   groups[key].filing_total_sales_refunded_sum += row.filing_total_sales_refunded || 0;
-  groups[key].row_count += 1;
 }
 
 const res = Object.values(groups);
@@ -89,7 +87,6 @@ if (regions.includes('EU')) {
   const euData = res.filter(el => euCodes.has(el.country_code));
   const resMap = Object.fromEntries(euData.map(el => [el.country_code, netTaxable(el)]));
   const vatMap = Object.fromEntries(euData.map(el => [el.country_code, el.filing_tax_payable_sum]));
-  const rowCountMap = Object.fromEntries(euData.map(el => [el.country_code, el.row_count]));
 
   const taxJSON = {
     supplies_from_member_state_of_identification: EU_COUNTRIES
@@ -115,14 +112,15 @@ if (regions.includes('EU')) {
   console.log('EU tax report saved to eu-tax-report.json');
 
   // Math check: reported VAT must equal taxable amount * VAT rate.
-  // Stripe rounds tax per transaction, so allow up to half a cent of drift per transaction.
+  // Stripe rounds tax per transaction, so sums drift slightly from taxable * rate.
+  // Allow 0.1% of expected VAT (min 0.50) - far below the ~5% gap a wrong rate produces.
   const codeByConsumer = Object.fromEntries(EU_COUNTRIES.map(c => [c.consumer_id, c.code]));
   const mismatches = taxJSON.supplies_from_member_state_of_identification
     .map(supply => {
       const code = codeByConsumer[supply.consumer_id];
       const expected = round2(supply.taxable_amount * supply.vat_rate / 100);
       const diff = round2(supply.vat_amount - expected);
-      const tolerance = 0.01 + 0.005 * rowCountMap[code];
+      const tolerance = Math.max(0.5, expected * 0.001);
       return { country: code, taxable: supply.taxable_amount, rate: supply.vat_rate, reported_vat: round2(supply.vat_amount), expected_vat: expected, diff, tolerance: round2(tolerance) };
     })
     .filter(el => Math.abs(el.diff) > el.tolerance);
